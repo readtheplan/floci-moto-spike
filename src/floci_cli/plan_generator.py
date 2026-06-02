@@ -1,41 +1,84 @@
-"""Generate Terraform plan JSON from simulator state."""
+"""Generate realistic terraform plan -json output from resource state."""
+from __future__ import annotations
+
 from typing import Any
-import json
 
+TERRAFORM_VERSION = "1.5.7"
+FORMAT_VERSION = "1.2"
 
-def generate_plan_json(resources: list[dict[str, Any]], before: list[dict[str, Any]] | None = None) -> dict[str, Any]:
-    """Generate a terraform show -json style plan."""
-    plan = {
-        "format_version": "1.2",
-        "terraform_version": "1.9.0",
-        "planned_values": {"root_module": {"resources": []}},
-        "resource_changes": [],
-        "configuration": {},
+def generate_plan_json(
+    before: list[dict[str, Any]],
+    after: list[dict[str, Any]],
+    action: str = "create",
+) -> dict[str, Any]:
+    """Build a terraform plan -json structure from before/after resource state.
+
+    Args:
+        before: Resources that existed before the operation.
+        after: Resources that exist after the operation.
+        action: One of "create", "destroy", or "noop".
+    """
+    resource_changes: list[dict[str, Any]] = []
+    action_map = {
+        "create": ["create"],
+        "destroy": ["delete"],
+        "noop": ["no-op"],
     }
+    tf_actions = action_map.get(action, ["no-op"])
+
+    # Build a simple diff: after_set - before_set = created, before_set - after_set = destroyed
+    before_addrs = {r["address"] for r in before}
+    after_addrs = {r["address"] for r in after}
+
+    if action == "create":
+        resources = after
+    elif action == "destroy":
+        resources = before
+    else:
+        resources = after  # noop — use after for unchanged resources
 
     for res in resources:
-        addr = f"{res['type']}.{res['name']}"
-        change = {
-            "address": addr,
+        before_vals: dict[str, Any] | None = None
+        after_vals: dict[str, Any] | None = None
+
+        if action == "create":
+            before_vals = None
+            after_vals = res["attributes"]
+        elif action == "destroy":
+            before_vals = res["attributes"]
+            after_vals = None
+        else:
+            before_vals = res["attributes"]
+            after_vals = res["attributes"]
+
+        resource_changes.append({
+            "address": res["address"],
+            "module_address": "",
             "mode": "managed",
             "type": res["type"],
-            "name": res["name"],
+            "name": res["address"].split(".", 1)[1],
             "provider_name": "registry.terraform.io/hashicorp/aws",
             "change": {
-                "actions": ["create"],
-                "before": None,
-                "after": res["attributes"],
+                "actions": tf_actions,
+                "before": before_vals,
+                "after": after_vals,
+                "before_sensitive": False,
+                "after_sensitive": False,
                 "after_unknown": {},
+                "replace_paths": [],
             },
-        }
-        plan["resource_changes"].append(change)
-        plan["planned_values"]["root_module"]["resources"].append({
-            "address": addr,
-            "mode": "managed",
-            "type": res["type"],
-            "name": res["name"],
-            "provider_name": "registry.terraform.io/hashicorp/aws",
-            "values": res["attributes"],
+            "action_reason": action,
         })
 
-    return plan
+    return {
+        "format_version": FORMAT_VERSION,
+        "terraform_version": TERRAFORM_VERSION,
+        "variables": {},
+        "resource_changes": resource_changes,
+        "resource_drift": [],
+        "output_changes": {},
+        "prior_state": None,
+        "planned_values": {},
+        "configuration": {},
+        "relevant_attributes": [],
+    }
