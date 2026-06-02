@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Minimal fake AWS resource simulator using Moto — outputs Terraform plan JSON for readtheplan testing"
 requires-python = ">=3.11"
 dependencies = [
-    "moto[s3,dynamodb,iam,kms,rds,lambda,elbv2,ecs,ec2,route53,logs]>=5.0",
+    "moto[all]>=5.0",
     "boto3>=1.34",
     "click>=8.1",
 ]
