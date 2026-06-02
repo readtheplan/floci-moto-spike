@@ -1,0 +1,11 @@
+# floci API — production requirements
+# Install: pip install -r requirements-api.txt
+#
+# Core (already in pyproject.toml dependencies):
+#   moto[s3,dynamodb,iam,kms,rds,lambda,elbv2,ecs,ec2,route53,logs]>=5.0
+#   boto3>=1.34
+#   click>=8.1
+#
+# API layer:
+fastapi>=0.115
+uvicorn[standard]>=0.34
