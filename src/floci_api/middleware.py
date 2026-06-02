@@ -3,17 +3,33 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter
-from slowapi.util import get_remote_address
 from slowapi.middleware import SlowAPIMiddleware
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response, JSONResponse
 
 
-# ── Rate limiter ────────────────────────────────────────────────────────
+# ── Rate limiter with real-client-IP awareness ──────────────────────────
+
+def _get_client_ip(request: Request) -> str:
+    """Extract the real client IP from X-Forwarded-For, falling back to TCP address.
+
+    nginx sets X-Forwarded-For to $proxy_add_x_forwarded_for, so the leftmost
+    entry is the original client. If behind multiple proxies, use the first one.
+    """
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        # Take the first IP in the chain (original client)
+        return forwarded.split(",")[0].strip()
+    # Fallback to direct connection (useful for local testing)
+    client = request.client
+    if client:
+        return client.host
+    return "unknown"
+
 
 limiter = Limiter(
-    key_func=get_remote_address,
+    key_func=_get_client_ip,
     default_limits=["60/minute"],
     headers_enabled=True,  # X-RateLimit-* headers
 )
