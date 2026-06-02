@@ -4,6 +4,7 @@
 Usage:
     floci-cli create --scenario simple          # provision + output plan JSON
     floci-cli destroy --scenario simple         # output destroy plan JSON
+    floci-cli update --scenario update          # provision, modify, output update plan
     floci-cli list-scenarios                   # list available scenarios
 """
 from __future__ import annotations
@@ -71,6 +72,46 @@ def destroy(scenario: str, output: Path | None) -> None:
         sim.stop()
 
     plan = generate_plan_json(before=resources, after=[], action="destroy")
+    _output(plan, output)
+
+
+@cli.command()
+@click.option("--scenario", required=True, help="Scenario name (must have updated_resources)")
+@click.option("--output", "-o", type=click.Path(path_type=Path), help="Write plan JSON to file instead of stdout")
+def update(scenario: str, output: Path | None) -> None:
+    """Provision initial state, then modified state, and output an 'update' plan JSON with before/after diffs."""
+    if scenario not in SCENARIOS:
+        click.echo(
+            f"Unknown scenario: {scenario}. Available: {', '.join(SCENARIOS)}",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    spec = SCENARIOS[scenario]
+    if "updated_resources" not in spec:
+        click.echo(
+            f"Scenario '{scenario}' does not have 'updated_resources' — cannot generate update plan.",
+            err=True,
+        )
+        raise SystemExit(1)
+
+    # Provision initial state → "before"
+    sim_before = FakeAwsSimulator(region="us-east-1")
+    sim_before.start()
+    try:
+        before_state = sim_before.provision(spec["resources"])
+    finally:
+        sim_before.stop()
+
+    # Provision modified state → "after"
+    sim_after = FakeAwsSimulator(region="us-east-1")
+    sim_after.start()
+    try:
+        after_state = sim_after.provision(spec["updated_resources"])
+    finally:
+        sim_after.stop()
+
+    plan = generate_plan_json(before=before_state, after=after_state, action="update")
     _output(plan, output)
 
 
