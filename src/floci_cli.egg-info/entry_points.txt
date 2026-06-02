@@ -1,0 +1,2 @@
+[console_scripts]
+floci = floci_cli.cli:cli
